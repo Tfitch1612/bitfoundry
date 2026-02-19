@@ -3,13 +3,13 @@
 import { useSearchParams } from "next/navigation";
 
 export default function SuccessClient() {
-  const searchParams = useSearchParams();
-  const sessionId = searchParams.get("session_id");
+  const params = useSearchParams();
+  const sessionId = params.get("session_id");
 
   return (
     <main style={{ padding: 24 }}>
-      <h1>Success</h1>
-      <p>Session: {sessionId ?? "none"}</p>
+      <h1>Payment success ✅</h1>
+      <p>Session: {sessionId ?? "No session_id in URL"}</p>
     </main>
   );
 }
