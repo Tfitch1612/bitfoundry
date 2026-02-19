@@ -5,11 +5,11 @@ import { useSearchParams } from "next/navigation";
 
 type VerifyResponse = {
   paid: boolean;
-  payment_status: string;
+  payment_status: string | null;
   amount_total: number | null;
   currency: string | null;
   customer_email: string | null;
-  id: string;
+  id: string | null;
   error?: string;
 };
 
@@ -19,90 +19,104 @@ export default function SuccessClient() {
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<VerifyResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  async function load() {
     if (!sessionId) {
-      setError("Missing session_id in URL.");
+      setData({ paid: false, payment_status: null, amount_total: null, currency: null, customer_email: null, id: null, error: "No session_id in URL" });
       setLoading(false);
       return;
     }
 
-    const verify = async () => {
-      try {
-        const res = await fetch("/api/verify-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sessionId }),
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/verify-session?session_id=${encodeURIComponent(sessionId)}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+
+      const json = (await res.json()) as VerifyResponse;
+
+      if (!res.ok) {
+        setData({
+          paid: false,
+          payment_status: null,
+          amount_total: null,
+          currency: null,
+          customer_email: null,
+          id: null,
+          error: json?.error || "Verify failed",
         });
-
-        const json = await res.json();
-
-        if (!res.ok) {
-          setError(json?.error ?? "Failed to verify session.");
-        } else {
-          setData(json);
-        }
-      } catch (err) {
-        console.error(err);
-        setError("Unexpected error verifying payment.");
-      } finally {
-        setLoading(false);
+      } else {
+        setData(json);
       }
-    };
+    } catch (e: any) {
+      setData({
+        paid: false,
+        payment_status: null,
+        amount_total: null,
+        currency: null,
+        customer_email: null,
+        id: null,
+        error: e?.message || "Network error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    verify();
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  if (loading) {
-    return (
-      <main style={{ padding: 24 }}>
-        <h2>Verifying payment...</h2>
-      </main>
-    );
-  }
-
-  if (error) {
-    return (
-      <main style={{ padding: 24 }}>
-        <h2>Something went wrong</h2>
-        <p>{error}</p>
-      </main>
-    );
-  }
-
-  if (!data) {
-    return null;
-  }
-
   const dollars =
-    typeof data.amount_total === "number"
-      ? (data.amount_total / 100).toFixed(2)
-      : null;
+    typeof data?.amount_total === "number" ? (data.amount_total / 100).toFixed(2) : null;
 
   return (
-    <main style={{ padding: 24 }}>
+    <main style={{ padding: 24, maxWidth: 720 }}>
       <h1>Payment success ✅</h1>
 
-      <p>
-        <strong>Status:</strong> {data.payment_status}
-      </p>
+      {loading && <p>Loading payment details…</p>}
 
-      {dollars && data.currency && (
-        <p>
-          <strong>Amount:</strong> ${dollars} {data.currency.toUpperCase()}
-        </p>
+      {!loading && data?.error && (
+        <>
+          <p style={{ marginTop: 12 }}>
+            <b>Error:</b> {data.error}
+          </p>
+          <button onClick={load} style={{ marginTop: 12 }}>
+            Retry
+          </button>
+        </>
       )}
 
-      {data.customer_email && (
-        <p>
-          <strong>Email:</strong> {data.customer_email}
-        </p>
-      )}
+      {!loading && !data?.error && data && (
+        <>
+          <p style={{ marginTop: 12 }}>
+            <b>Status:</b> {data.payment_status ?? "unknown"}
+          </p>
 
-      <p style={{ wordBreak: "break-all" }}>
-        <strong>Session:</strong> {data.id}
-      </p>
+          {dollars && data.currency && (
+            <p>
+              <b>Amount:</b> ${dollars} {data.currency.toUpperCase()}
+            </p>
+          )}
+
+          {data.customer_email && (
+            <p>
+              <b>Email:</b> {data.customer_email}
+            </p>
+          )}
+
+          <p style={{ wordBreak: "break-all" }}>
+            <b>Session:</b> {data.id ?? sessionId}
+          </p>
+
+          <button onClick={load} style={{ marginTop: 12 }}>
+            Refresh details
+          </button>
+        </>
+      )}
     </main>
   );
 }
