@@ -5,11 +5,11 @@ import { useSearchParams } from "next/navigation";
 
 type VerifyResponse = {
   paid: boolean;
-  payment_status: string | null;
+  payment_status: string;
   amount_total: number | null;
   currency: string | null;
   customer_email: string | null;
-  id: string | null;
+  id: string;
   error?: string;
 };
 
@@ -19,81 +19,74 @@ export default function SuccessClient() {
 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<VerifyResponse | null>(null);
-
-  async function load() {
-    if (!sessionId) {
-      setData({ paid: false, payment_status: null, amount_total: null, currency: null, customer_email: null, id: null, error: "No session_id in URL" });
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/verify-session?session_id=${encodeURIComponent(sessionId)}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-      });
-
-      const json = (await res.json()) as VerifyResponse;
-
-      if (!res.ok) {
-        setData({
-          paid: false,
-          payment_status: null,
-          amount_total: null,
-          currency: null,
-          customer_email: null,
-          id: null,
-          error: json?.error || "Verify failed",
-        });
-      } else {
-        setData(json);
-      }
-    } catch (e: any) {
-      setData({
-        paid: false,
-        payment_status: null,
-        amount_total: null,
-        currency: null,
-        customer_email: null,
-        id: null,
-        error: e?.message || "Network error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+
+    async function run() {
+      if (!sessionId) {
+        setLoading(false);
+        setError("No session_id found in the URL.");
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch(
+          `/api/verify-session?session_id=${encodeURIComponent(sessionId)}`,
+          { cache: "no-store" }
+        );
+
+        const json = (await res.json()) as VerifyResponse;
+
+        if (!res.ok) {
+          throw new Error(json?.error || "Failed to verify session");
+        }
+
+        if (!cancelled) setData(json);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message ?? "Unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
   }, [sessionId]);
 
   const dollars =
-    typeof data?.amount_total === "number" ? (data.amount_total / 100).toFixed(2) : null;
+    typeof data?.amount_total === "number"
+      ? (data.amount_total / 100).toFixed(2)
+      : null;
 
   return (
-    <main style={{ padding: 24, maxWidth: 720 }}>
+    <main style={{ padding: 24 }}>
       <h1>Payment success ✅</h1>
 
-      {loading && <p>Loading payment details…</p>}
+      {loading && <p>Verifying payment…</p>}
 
-      {!loading && data?.error && (
+      {!loading && error && (
         <>
-          <p style={{ marginTop: 12 }}>
-            <b>Error:</b> {data.error}
-          </p>
-          <button onClick={load} style={{ marginTop: 12 }}>
-            Retry
-          </button>
+          <p style={{ fontWeight: 700 }}>Could not verify payment.</p>
+          <p>{error}</p>
+          {sessionId && (
+            <p style={{ wordBreak: "break-all" }}>
+              <b>Session:</b> {sessionId}
+            </p>
+          )}
         </>
       )}
 
-      {!loading && !data?.error && data && (
+      {!loading && !error && data && (
         <>
-          <p style={{ marginTop: 12 }}>
-            <b>Status:</b> {data.payment_status ?? "unknown"}
+          <p>
+            <b>Status:</b> {data.payment_status}
           </p>
 
           {dollars && data.currency && (
@@ -109,12 +102,14 @@ export default function SuccessClient() {
           )}
 
           <p style={{ wordBreak: "break-all" }}>
-            <b>Session:</b> {data.id ?? sessionId}
+            <b>Session:</b> {data.id}
           </p>
 
-          <button onClick={load} style={{ marginTop: 12 }}>
-            Refresh details
-          </button>
+          {!data.paid && (
+            <p style={{ marginTop: 12 }}>
+              ⚠️ This session is not marked as paid yet.
+            </p>
+          )}
         </>
       )}
     </main>
