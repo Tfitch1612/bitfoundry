@@ -28,33 +28,36 @@ export default function SuccessClient() {
       return;
     }
 
-    (async () => {
+    const verify = async () => {
       try {
-        const res = await fetch(`/api/verify-session?session_id=${sessionId}`, {
-          method: "GET",
-          cache: "no-store",
+        const res = await fetch("/api/verify-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId }),
         });
 
-        const json = (await res.json()) as VerifyResponse;
+        const json = await res.json();
 
         if (!res.ok) {
-          setError(json.error || "Failed to verify payment.");
+          setError(json?.error ?? "Failed to verify session.");
         } else {
           setData(json);
         }
-      } catch (e: any) {
-        setError(e?.message || "Network error verifying payment.");
+      } catch (err) {
+        console.error(err);
+        setError("Unexpected error verifying payment.");
       } finally {
         setLoading(false);
       }
-    })();
+    };
+
+    verify();
   }, [sessionId]);
 
   if (loading) {
     return (
       <main style={{ padding: 24 }}>
-        <h1>Verifying payment…</h1>
-        <p>Please wait.</p>
+        <h2>Verifying payment...</h2>
       </main>
     );
   }
@@ -62,28 +65,14 @@ export default function SuccessClient() {
   if (error) {
     return (
       <main style={{ padding: 24 }}>
-        <h1>Could not verify payment</h1>
+        <h2>Something went wrong</h2>
         <p>{error}</p>
       </main>
     );
   }
 
   if (!data) {
-    return (
-      <main style={{ padding: 24 }}>
-        <h1>Unknown state</h1>
-      </main>
-    );
-  }
-
-  if (!data.paid) {
-    return (
-      <main style={{ padding: 24 }}>
-        <h1>Payment not complete</h1>
-        <p>Status: {data.payment_status}</p>
-        <p>Session: {data.id}</p>
-      </main>
-    );
+    return null;
   }
 
   const dollars =
@@ -94,19 +83,25 @@ export default function SuccessClient() {
   return (
     <main style={{ padding: 24 }}>
       <h1>Payment success ✅</h1>
-      <p><b>Status:</b> {data.payment_status}</p>
+
+      <p>
+        <strong>Status:</strong> {data.payment_status}
+      </p>
+
       {dollars && data.currency && (
         <p>
-          <b>Amount:</b> {dollars} {data.currency.toUpperCase()}
+          <strong>Amount:</strong> ${dollars} {data.currency.toUpperCase()}
         </p>
       )}
+
       {data.customer_email && (
         <p>
-          <b>Email:</b> {data.customer_email}
+          <strong>Email:</strong> {data.customer_email}
         </p>
       )}
+
       <p style={{ wordBreak: "break-all" }}>
-        <b>Session:</b> {data.id}
+        <strong>Session:</strong> {data.id}
       </p>
     </main>
   );
