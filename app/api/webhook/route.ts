@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2024-06-20",
-});
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const body = await req.text();
-  const signature = req.headers.get("stripe-signature");
+  const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+  if (!stripeSecretKey) {
+    return NextResponse.json(
+      { error: "Missing STRIPE_SECRET_KEY" },
+      { status: 500 }
+    );
+  }
+
+  if (!webhookSecret) {
+    return NextResponse.json(
+      { error: "Missing STRIPE_WEBHOOK_SECRET" },
+      { status: 500 }
+    );
+  }
+
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: "2026-01-28.clover",
+  });
+
+  const signature = req.headers.get("stripe-signature");
   if (!signature) {
     return NextResponse.json(
       { error: "Missing stripe-signature header" },
@@ -22,14 +34,13 @@ export async function POST(req: Request) {
     );
   }
 
+  // IMPORTANT: raw body for Stripe signature verification
+  const body = await req.text();
+
   let event: Stripe.Event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
-    );
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err: any) {
     return NextResponse.json(
       { error: `Webhook signature verification failed: ${err.message}` },
@@ -37,17 +48,26 @@ export async function POST(req: Request) {
     );
   }
 
-  // ✅ Handle the event
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object as Stripe.Checkout.Session;
+  // Handle events you care about
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      console.log("✅ checkout.session.completed", {
+        id: session.id,
+        payment_status: session.payment_status,
+        customer_email: session.customer_details?.email,
+      });
+      break;
+    }
 
-    console.log("✅ Payment successful:", session.id);
-    console.log("Customer email:", session.customer_details?.email);
+    // Optional extras (useful depending on payment methods)
+    case "checkout.session.async_payment_succeeded":
+    case "checkout.session.async_payment_failed":
+      console.log(`ℹ️ ${event.type}`);
+      break;
 
-    // TODO:
-    // - Save order to database
-    // - Send confirmation email
-    // - Mark service as paid
+    default:
+      console.log(`Unhandled event type: ${event.type}`);
   }
 
   return NextResponse.json({ received: true });
