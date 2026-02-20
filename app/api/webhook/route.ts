@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
+// Make sure this runs in Node (Stripe webhooks need Node crypto)
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -23,6 +23,7 @@ export async function POST(req: Request) {
   }
 
   const stripe = new Stripe(stripeSecretKey, {
+    // Use the API version your Stripe account/webhook screen shows
     apiVersion: "2026-01-28.clover",
   });
 
@@ -34,7 +35,7 @@ export async function POST(req: Request) {
     );
   }
 
-  // IMPORTANT: raw body for Stripe signature verification
+  // IMPORTANT: this must be the raw body (text), not JSON
   const body = await req.text();
 
   let event: Stripe.Event;
@@ -52,22 +53,26 @@ export async function POST(req: Request) {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
-      console.log("✅ checkout.session.completed", {
+
+      // Example: session.id, session.payment_status, session.customer_details?.email
+      console.log("✅ checkout.session.completed:", {
         id: session.id,
         payment_status: session.payment_status,
-        customer_email: session.customer_details?.email,
+        email: session.customer_details?.email,
       });
+
       break;
     }
 
-    // Optional extras (useful depending on payment methods)
+    // Optional (good to include if you accept async payment methods)
     case "checkout.session.async_payment_succeeded":
     case "checkout.session.async_payment_failed":
-      console.log(`ℹ️ ${event.type}`);
+      console.log("ℹ️ async checkout update:", event.type);
       break;
 
     default:
-      console.log(`Unhandled event type: ${event.type}`);
+      // ignore everything else
+      break;
   }
 
   return NextResponse.json({ received: true });
