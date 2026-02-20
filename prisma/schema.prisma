@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // Neon pooling ON
+  directUrl = env("DIRECT_URL")   // Neon pooling OFF (migrations/db push)
+}
+
+/*
+  ============================
+  Models
+  ============================
+*/
+
+/*
+  Stores successful Stripe checkout sessions
+*/
+model Purchase {
+  id               String   @id @default(cuid())
+  stripeSessionId  String   @unique
+  stripeCustomerId String?
+  customerEmail    String?
+  amountTotal      Int?
+  currency         String?
+  status           String?
+  createdAt        DateTime @default(now())
+}
